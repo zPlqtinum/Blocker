@@ -1,7 +1,6 @@
 import tkinter as tk
 from tkinter import messagebox
 import subprocess
-import os
 from pathlib import Path
 
 BLOCKLIST_PATH = "/etc/hosts"
@@ -40,6 +39,29 @@ class WebsiteBlockerApp:
             self.entry_bg = "#f0f0f0"
         self.root.configure(bg=self.bg_color)
 
+    def remove_all_blocks(self):
+        confirm = messagebox.askyesno("Confirm", "Remove all website blocks?")
+        if not confirm:
+            return
+        try:
+            with open(BLOCKLIST_PATH, 'r') as f:
+                lines = f.readlines()
+
+            new_lines = [line for line in lines if BLOCKER_TAG not in line]
+
+            temp_file = Path("/tmp/hosts_cleaned")
+            with open(temp_file, 'w') as f:
+                f.writelines(new_lines)
+
+            subprocess.run(["sudo", "cp", str(temp_file), BLOCKLIST_PATH], check=True)
+            subprocess.run(["sudo", "dscacheutil", "-flushcache"])
+            self.blocked_sites = []
+            self.save_blocked_sites()
+            self.update_listbox()
+            messagebox.showinfo("Success", "All blocks removed.")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to remove blocks:\n{e}")
+
     def build_ui(self):
         self.title_label = tk.Label(self.root, text="WebBlocker", font=("Helvetica", 20), bg=self.bg_color, fg=self.fg_color)
         self.title_label.pack(pady=10)
@@ -55,6 +77,9 @@ class WebsiteBlockerApp:
 
         self.remove_button = tk.Button(self.root, text="Unblock Selected", command=self.unblock_selected, bg="#f44336", fg="white")
         self.remove_button.pack(pady=5)
+
+        self.clear_all_button = tk.Button(self.root, text="Remove All Blocks", command=self.remove_all_blocks, bg="#9C27B0", fg="white")
+        self.clear_all_button.pack(pady=10)
 
         self.toggle_button = tk.Button(self.root, text="Toggle Light/Dark Mode", command=self.toggle_mode, bg="#607D8B", fg="white")
         self.toggle_button.pack(pady=10)
@@ -85,7 +110,6 @@ class WebsiteBlockerApp:
             messagebox.showinfo("Info", "Website is already blocked.")
             return
 
-        # Append to hosts using sudo
         try:
             cmd = f'echo "{REDIRECT_IP} {url} {BLOCKER_TAG}" | sudo tee -a {BLOCKLIST_PATH}'
             subprocess.run(cmd, shell=True, check=True)
@@ -103,11 +127,12 @@ class WebsiteBlockerApp:
             return
         site = self.listbox.get(selected[0])
 
-        # Remove from hosts file (still needs sudo)
         try:
             with open(BLOCKLIST_PATH, 'r') as f:
                 lines = f.readlines()
-            new_lines = [line for line in lines if site not in line or BLOCKER_TAG not in line]
+
+            # Keep lines that do NOT contain BOTH site and BLOCKER_TAG
+            new_lines = [line for line in lines if not (site in line and BLOCKER_TAG in line)]
 
             temp_file = Path("/tmp/hosts_temp")
             with open(temp_file, 'w') as f:
@@ -130,7 +155,6 @@ class WebsiteBlockerApp:
         self.entry.config(bg=self.entry_bg, fg=self.fg_color, insertbackground=self.fg_color)
         self.root.configure(bg=self.bg_color)
 
-# Entry point
 if __name__ == "__main__":
     root = tk.Tk()
     app = WebsiteBlockerApp(root)
